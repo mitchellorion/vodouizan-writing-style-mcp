@@ -1,0 +1,9 @@
+{
+  "_comment": "Update the path below to match where you place the vodouizan-writing-style-mcp folder",
+  "mcpServers": {
+    "vodouizan-writing-style": {
+      "command": "python3",
+      "args": ["/FULL/PATH/TO/vodouizan-writing-style-mcp/server.py"]
+    }
+  }
+}
