@@ -4,27 +4,19 @@ Vodouizan Writing Style MCP Server
 
 Provides reference articles and style guidance to help an AI write
 in the distinctive voice of the Vodouizan articles.
+
+Supports both stdio (local) and SSE (hosted) transports.
 """
 
-import json
 import os
 import sys
 from pathlib import Path
 
-# MCP protocol over stdio
-def send_response(response: dict):
-    line = json.dumps(response) + "\n"
-    sys.stdout.write(line)
-    sys.stdout.flush()
-
-def send_error(id, code: int, message: str):
-    send_response({
-        "jsonrpc": "2.0",
-        "id": id,
-        "error": {"code": code, "message": message}
-    })
+from mcp.server.fastmcp import FastMCP
 
 ARTICLES_DIR = Path(__file__).parent / "articles"
+
+mcp = FastMCP("vodouizan-writing-style")
 
 STYLE_GUIDE = """
 # Vodouizan Writing Style Guide
@@ -86,198 +78,54 @@ STYLE_GUIDE = """
 - The dead, decomposition, the afterlife: treated as administrative and relational problems, not metaphysical mysteries
 """
 
-def get_articles() -> list[dict]:
+
+def _load_articles() -> list[dict]:
     articles = []
     for path in sorted(ARTICLES_DIR.glob("*.txt")):
         articles.append({
             "id": path.stem,
-            "filename": path.name,
             "content": path.read_text(encoding="utf-8")
         })
     return articles
 
-def handle_request(request: dict) -> dict | None:
-    method = request.get("method")
-    req_id = request.get("id")
-    params = request.get("params", {})
 
-    if method == "initialize":
-        return {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {
-                    "tools": {},
-                    "resources": {}
-                },
-                "serverInfo": {
-                    "name": "vodouizan-writing-style-mcp",
-                    "version": "1.0.0"
-                }
-            }
-        }
+@mcp.tool()
+def get_style_guide() -> str:
+    """Returns the comprehensive Vodouizan writing style guide. Call this first before writing anything to understand the voice, structure, and conventions of this writing style."""
+    return STYLE_GUIDE
 
-    elif method == "notifications/initialized":
-        return None  # no response needed
 
-    elif method == "tools/list":
-        return {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "tools": [
-                    {
-                        "name": "get_style_guide",
-                        "description": "Returns the comprehensive Vodouizan writing style guide. Call this first before writing anything to understand the voice, structure, and conventions of this writing style.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {},
-                            "required": []
-                        }
-                    },
-                    {
-                        "name": "list_articles",
-                        "description": "Lists all available reference articles by the Vodouizan author. Returns article IDs and their titles.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {},
-                            "required": []
-                        }
-                    },
-                    {
-                        "name": "get_article",
-                        "description": "Returns the full text of a specific Vodouizan reference article by its ID. Use this to study a particular article's structure and prose before writing on a related topic.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "article_id": {
-                                    "type": "string",
-                                    "description": "The article ID as returned by list_articles"
-                                }
-                            },
-                            "required": ["article_id"]
-                        }
-                    },
-                    {
-                        "name": "get_all_articles",
-                        "description": "Returns the full text of all Vodouizan reference articles. Use this when you need comprehensive immersion in the writing style before producing a new piece.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {},
-                            "required": []
-                        }
-                    },
-                    {
-                        "name": "get_writing_prompt",
-                        "description": "Generates a style-locked writing prompt for a given topic. Embeds the Vodouizan voice constraints directly into the instruction so you write in the correct style.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "topic": {
-                                    "type": "string",
-                                    "description": "The topic or subject you want to write about in the Vodouizan style"
-                                }
-                            },
-                            "required": ["topic"]
-                        }
-                    }
-                ]
-            }
-        }
+@mcp.tool()
+def list_articles() -> str:
+    """Lists all available reference articles by the Vodouizan author. Returns article IDs and their titles."""
+    articles = _load_articles()
+    listing = "\n".join([f"- {a['id']}" for a in articles])
+    return f"Available Vodouizan articles ({len(articles)} total):\n\n{listing}"
 
-    elif method == "tools/call":
-        tool_name = params.get("name")
-        args = params.get("arguments", {})
 
-        if tool_name == "get_style_guide":
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": STYLE_GUIDE
-                        }
-                    ]
-                }
-            }
+@mcp.tool()
+def get_article(article_id: str) -> str:
+    """Returns the full text of a specific Vodouizan reference article by its ID. Use list_articles first to get valid IDs."""
+    articles = _load_articles()
+    match = next((a for a in articles if a["id"] == article_id), None)
+    if not match:
+        match = next((a for a in articles if article_id.lower() in a["id"].lower()), None)
+    if not match:
+        return f"Article '{article_id}' not found. Use list_articles to see available IDs."
+    return f"# {match['id']}\n\n{match['content']}"
 
-        elif tool_name == "list_articles":
-            articles = get_articles()
-            listing = "\n".join([
-                f"- ID: {a['id']}\n  Title: {a['id'].replace('-', ' ')}"
-                for a in articles
-            ])
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"Available Vodouizan articles ({len(articles)} total):\n\n{listing}"
-                        }
-                    ]
-                }
-            }
 
-        elif tool_name == "get_article":
-            article_id = args.get("article_id", "")
-            articles = get_articles()
-            match = next((a for a in articles if a["id"] == article_id), None)
-            if not match:
-                # try partial match
-                match = next((a for a in articles if article_id.lower() in a["id"].lower()), None)
-            if not match:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": req_id,
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Article '{article_id}' not found. Use list_articles to see available IDs."
-                            }
-                        ]
-                    }
-                }
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"# {match['id']}\n\n{match['content']}"
-                        }
-                    ]
-                }
-            }
+@mcp.tool()
+def get_all_articles() -> str:
+    """Returns the full text of all Vodouizan reference articles. Use this for full immersion in the writing style before producing a new piece."""
+    articles = _load_articles()
+    return "\n\n---\n\n".join([f"# {a['id']}\n\n{a['content']}" for a in articles])
 
-        elif tool_name == "get_all_articles":
-            articles = get_articles()
-            combined = "\n\n---\n\n".join([
-                f"# {a['id']}\n\n{a['content']}"
-                for a in articles
-            ])
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": combined
-                        }
-                    ]
-                }
-            }
 
-        elif tool_name == "get_writing_prompt":
-            topic = args.get("topic", "")
-            prompt = f"""You are writing in the exact voice of the Vodouizan author. Study the style guide and reference articles provided by this MCP server before writing.
+@mcp.tool()
+def get_writing_prompt(topic: str) -> str:
+    """Generates a style-locked writing prompt for a given topic. Embeds the Vodouizan voice constraints directly into the instruction."""
+    return f"""You are writing in the exact voice of the Vodouizan author. Study the style guide and reference articles provided by this MCP server before writing.
 
 TOPIC: {topic}
 
@@ -293,57 +141,15 @@ MANDATORY STYLE REQUIREMENTS:
 
 Before writing, call get_style_guide and get_all_articles from this MCP server to fully immerse yourself in the voice."""
 
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
-                    ]
-                }
-            }
-
-        else:
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"}
-            }
-
-    elif method == "resources/list":
-        return {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {"resources": []}
-        }
-
-    else:
-        if req_id is not None:
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32601, "message": f"Method not found: {method}"}
-            }
-        return None
-
-
-def main():
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            request = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        response = handle_request(request)
-        if response is not None:
-            send_response(response)
-
 
 if __name__ == "__main__":
-    main()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    host = os.environ.get("MCP_HOST", "0.0.0.0")
+    port = int(os.environ.get("MCP_PORT", "8000"))
+
+    if transport == "sse":
+        mcp.run(transport="sse", host=host, port=port)
+    elif transport == "streamable-http":
+        mcp.run(transport="streamable-http", host=host, port=port)
+    else:
+        mcp.run(transport="stdio")

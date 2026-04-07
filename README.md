@@ -8,7 +8,45 @@ This server exposes the full text of 11 reference articles and a detailed style 
 
 ## Configuration
 
-Add the following to your MCP client configuration (e.g. `claude_desktop_config.json` or `.cursor/mcp.json`):
+### Hosted / SSE (ModelScope or any remote deployment)
+
+Set the environment variable `MCP_TRANSPORT=sse` before starting the server. The server listens on `0.0.0.0:8000` by default.
+
+```json
+{
+  "mcpServers": {
+    "vodouizan-writing-style": {
+      "type": "sse",
+      "url": "http://<your-host>:8000/sse"
+    }
+  }
+}
+```
+
+Override host/port with environment variables:
+
+```
+MCP_TRANSPORT=sse
+MCP_HOST=0.0.0.0
+MCP_PORT=8000
+```
+
+### Streamable HTTP
+
+```json
+{
+  "mcpServers": {
+    "vodouizan-writing-style": {
+      "type": "streamable-http",
+      "url": "http://<your-host>:8000/mcp"
+    }
+  }
+}
+```
+
+Set `MCP_TRANSPORT=streamable-http` when starting the server.
+
+### Local / Stdio
 
 ```json
 {
@@ -25,8 +63,8 @@ Replace `/FULL/PATH/TO/` with the actual path where you cloned this repository.
 
 ### Requirements
 
-- Python 3.7+
-- No additional packages required (uses only the standard library)
+- Python 3.8+
+- `pip install -r requirements.txt` (installs `mcp[cli]`)
 
 ## Tools
 
